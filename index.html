@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <title>Pustaka Mini • baca buku bersimulasi halaman</title>
+  <!-- Tailwind + Font Awesome + Font Inter -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    body { background: #faf0e1; -webkit-tap-highlight-color: transparent; }
+    .book-card { transition: transform 0.15s ease, box-shadow 0.2s; }
+    .book-card:active { transform: scale(0.98); }
+    .reader-sheet { transition: bottom 0.3s cubic-bezier(0.2, 0.9, 0.3, 1); box-shadow: 0 -10px 30px -8px rgba(60,40,20,0.2); }
+    #readerPanel {
+      position: fixed; bottom: -100%; left: 0; right: 0; z-index: 50;
+      border-top-left-radius: 2rem; border-top-right-radius: 2rem;
+      background: #fdf3e3; transition: bottom 0.3s ease-out;
+      max-height: 90vh; overflow-y: auto; padding-bottom: 20px;
+    }
+    #readerPanel.show { bottom: 0; }
+    .overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4); backdrop-filter: blur(3px);
+      z-index: 45; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+    }
+    .overlay.show { opacity: 1; pointer-events: auto; }
+    .cover-img { width: 100%; height: 140px; background-size: cover; background-position: center; border-bottom: 2px solid #e2c7a9; }
+    /* simulasi halaman buku */
+    .page-content {
+      background: #fcf7e8;
+      background-image: linear-gradient(145deg, #f9eedb 0%, #fff6e5 100%);
+      border-radius: 18px 4px 18px 4px;
+      box-shadow: inset 0 -2px 5px rgba(0,0,0,0.02), 0 5px 10px rgba(0,0,0,0.05);
+      padding: 1.2rem 1rem;
+      min-height: 200px;
+      border-left: 6px solid #b48b5a; /* kesan buku jilid */
+    }
+    .page-number {
+      background: #d8c5a8;
+      color: #4f3f2c;
+      padding: 0.25rem 1.2rem;
+      border-radius: 40px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      display: inline-block;
+    }
+    .nav-page {
+      background: #e7d7bd;
+      border-radius: 40px;
+      padding: 0.4rem 1.2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 3px 0 #ac8e66;
+    }
+    .nav-page button:active { transform: translateY(2px); }
+    .nav-page button:disabled { opacity: 0.3; transform: none; }
+  </style>
+</head>
+<body class="text-stone-800 min-h-screen flex flex-col relative">
+
+<!-- Overlay dan panel baca (bottom sheet) -->
+<div id="overlay" class="overlay" onclick="closeReader()"></div>
+<div id="readerPanel" class="reader-sheet p-5 pb-8 border-t border-amber-300">
+  <div class="flex justify-between items-center mb-3">
+    <h3 class="font-bold text-lg flex items-center gap-2"><i class="fas fa-book-open text-amber-700"></i> Membaca</h3>
+    <button onclick="closeReader()" class="bg-amber-100 w-9 h-9 rounded-full flex items-center justify-center"><i class="fas fa-chevron-down"></i></button>
+  </div>
+  
+  <!-- area buku dengan kustomisasi dan halaman -->
+  <div id="mobileBookCard" class="w-full rounded-3xl p-4 transition-all duration-200 border-4 border-amber-800/30" style="background: #fbebd2; color: #3b2e22;">
+    <!-- gambar buku (sampul) tetap ditampilkan -->
+    <div id="mobilePreviewGambar" class="w-full h-32 rounded-xl mb-3 bg-cover bg-center shadow-inner border-2 border-white/50" style="background-image: url('https://placehold.co/600x400/c9a87f/ffffff?text=📘');"></div>
+    
+    <!-- Judul buku -->
+    <div id="mobileJudulBuku" class="font-bold text-base mb-2 flex items-center gap-1">
+      <i class="fas fa-feather-alt text-amber-600"></i> <span id="judulBukuAktif">Putri Duyung</span>
+    </div>
+    
+    <!-- konten halaman dengan navigasi -->
+    <div class="page-content" id="pageContentArea">
+      <p id="teksHalaman" class="text-sm leading-relaxed transition-opacity duration-200">Halaman 1: Di dasar laut...</p>
+    </div>
+    
+    <!-- navigasi halaman -->
+    <div class="flex items-center justify-between mt-4">
+      <div class="nav-page">
+        <button id="prevPageBtn" class="text-lg font-bold w-8 h-8 flex items-center justify-center"><i class="fas fa-chevron-left"></i></button>
+        <span id="pageIndicator" class="text-xs font-semibold">Hlm 1 / 3</span>
+        <button id="nextPageBtn" class="text-lg font-bold w-8 h-8 flex items-center justify-center"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      <span class="text-[10px] bg-white/60 px-3 py-1 rounded-full">geser halaman</span>
+    </div>
+  </div>
+  
+  <!-- kontrol kustom tetap ada -->
+  <div class="grid grid-cols-4 gap-2 mt-4 text-xs">
+    <div class="flex flex-col items-center">
+      <label class="text-stone-500">Latar</label>
+      <input type="color" id="mobileBgColor" value="#fbebd2" class="w-8 h-8 rounded-full border-0">
+    </div>
+    <div class="flex flex-col items-center">
+      <label class="text-stone-500">Teks</label>
+      <input type="color" id="mobileTextColor" value="#3b2e22" class="w-8 h-8 rounded-full border-0">
+    </div>
+    <div class="flex flex-col items-center">
+      <label class="text-stone-500">Ukuran</label>
+      <input type="range" id="mobileFontSize" min="14" max="24" value="16" class="w-full accent-amber-700">
+    </div>
+    <div class="flex flex-col items-center">
+      <label class="text-stone-500">Gaya</label>
+      <select id="mobileBorderStyle" class="bg-white/80 text-xs rounded-full py-1 px-1 border border-amber-300">
+        <option value="4px solid #b58b5b">Solid</option>
+        <option value="4px double #9b7b5e">Double</option>
+        <option value="4px dashed #a57144">Dashed</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- konten utama -->
+<div class="max-w-md mx-auto w-full px-4 py-3 relative z-10">
+  <!-- header -->
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h1 class="text-2xl font-black tracking-tight text-stone-800">📚 Digital<span class="text-amber-700">Library</span></h1>
+      <p class="text-xs text-stone-500">Club bahasa Indonesia · baca di HP</p>
+    </div>
+    <div class="bg-amber-100 p-2 rounded-2xl">
+      <i class="fas fa-search text-amber-700"></i>
+    </div>
+  </div>
+
+  <!-- form upload -->
+  <div class="bg-white/80 backdrop-blur-sm border border-amber-200 rounded-2xl p-4 mb-5 shadow-sm">
+    <h2 class="font-semibold text-sm flex items-center gap-2 mb-2"><i class="fas fa-cloud-upload-alt text-amber-600"></i> Unggah artikel</h2>
+    <div class="flex flex-col gap-2">
+      <input type="text" id="judulBuku" placeholder="Judul baru..." value="Pulau Duyung" class="w-full px-4 py-2.5 rounded-xl border border-amber-200 bg-white/80 text-sm">
+      <div class="grid grid-cols-3 gap-2">
+        <select id="kategoriBuku" class="col-span-2 px-3 py-2.5 rounded-xl border border-amber-200 bg-white/80 text-sm">
+          <option value="Fiksi">🧜 Fiksi</option>
+          <option value="Sejarah">🏯 Sejarah</option>
+          <option value="Sains">🔬 Sains</option>
+          <option value="Edukasi">📘 Edukasi</option>
+        </select>
+        <label class="col-span-1 flex items-center justify-center gap-1 px-2 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-xs font-medium">
+          <i class="fas fa-image"></i> File
+          <input type="file" id="gambarBuku" accept="image/*" class="hidden">
+        </label>
+      </div>
+      <button id="tombolUpload" class="bg-amber-700 hover:bg-amber-800 text-white font-semibold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2">
+        <i class="fas fa-plus-circle"></i> Tambah ke rak
+      </button>
+    </div>
+  </div>
+
+  <!-- rak buku -->
+  <div class="flex items-center justify-between mb-2">
+    <h3 class="font-semibold text-base flex items-center gap-1"><i class="fas fa-books text-amber-600"></i> Koleksi <span class="text-xs bg-amber-200/60 px-2 py-0.5 rounded-full ml-2" id="jumlahBuku">0</span></h3>
+    <span class="text-xs text-stone-400">tekan buku untuk baca</span>
+  </div>
+  <div id="rakBukuContainer" class="grid grid-cols-2 gap-3 auto-rows-fr pb-24"></div>
+</div>
+
+<script>
+  (function() {
+    // ========== DATA BUKU DENGAN GAMBAR UNIK ==========
+    let koleksiBuku = [
+      { 
+        id: 'b1', 
+        judul: 'Putri Duyung Karang', 
+        kategori: 'Fiksi', 
+        gambar: 'https://images.unsplash.com/photo-1535530992830-e25d07cfa780?w=400&h=300&fit=crop&auto=format',
+        halaman: [
+          "🌊 Di dasar laut yang sunyi, Putri Duyung Karang duduk di atas batu karang berselimut anemon. Ia menatap kapal yang berlalu di permukaan.",
+          "🧜‍♀️ “Aku rindu suara manusia,” bisiknya. Seekor penyu tua mendekat. “Kau bisa naik ke darat, tapi kau harus meninggalkan ekormu.”",
+          "🏝️ Putri duyung pun setuju. Dengan siaga ia berenang ke pantai. Ombak membawanya ke pasir putih. Ia pun berjalan dengan dua kaki."
+        ]
+      },
+      { 
+        id: 'b2', 
+        judul: 'Kerajaan Sriwijaya', 
+        kategori: 'Sejarah', 
+        gambar: 'https://images.unsplash.com/photo-1605965462710-967796a6c5cf?w=400&h=300&fit=crop&auto=format',
+        halaman: [
+          "🏯 Sriwijaya muncul pada abad ke-7 di Palembang. Menjadi pusat perdagangan dan agama Buddha terbesar di Asia Tenggara.",
+          "📜 Prasasti Kedukan Bukit (683 M) menceritakan perjalanan suci Dapunta Hyang dengan 20.000 tentara.",
+          "⚓ Kapal-kapal dari India, Arab dan Tiongkok berlabuh. Rempah-rempah, emas dan sutra menjadi komoditas utama."
+        ]
+      },
+      { 
+        id: 'b3', 
+        judul: 'Fotosintesis Ceria', 
+        kategori: 'Sains', 
+        gambar: 'https://images.unsplash.com/photo-1518537694733-ef8137f9e2c4?w=400&h=300&fit=crop&auto=format',
+        halaman: [
+          "🌿 Daun menangkap sinar matahari dengan klorofil. Energi cahaya mengubah air dan CO2 menjadi glukosa.",
+          "🔬 Percobaan: Masukkan daun hydrilla ke gelas berisi air. Tutup dengan corong. Gelembung oksigen akan terlihat!",
+          "📊 Tumbuhan menghasilkan oksigen yang kita hirup. Satu pohon dewasa bisa memenuhi kebutuhan oksigen 2 orang per hari."
+        ]
+      },
+      { 
+        id: 'b4', 
+        judul: 'Bahasa Kita', 
+        kategori: 'Edukasi', 
+        gambar: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=400&h=300&fit=crop&auto=format',
+        halaman: [
+          "📖 Bahasa Indonesia lahir dari Sumpah Pemuda 1928. Berakar dari bahasa Melayu yang telah jadi lingua franca.",
+          "✍️ Imbuhan me-, di-, -kan, -i mengubah kata dasar. Contoh: tulis → menulis → ditulis → tulisan.",
+          "🗣️ Kata serapan: 'pustaka' dari Sanskerta, 'buku' dari Belanda (boek), 'kursi' dari Arab (kursiy)."
+        ]
+      },
+      { 
+        id: 'b5', 
+        judul: 'Legenda Danau Toba', 
+        kategori: 'Fiksi', 
+        gambar: 'https://images.unsplash.com/photo-1518621736915-f3b1c41bfd00?w=400&h=300&fit=crop&auto=format',
+        halaman: [
+          "🐟 Seorang petani menangkap ikan mas ajaib yang berubah menjadi putri cantik. Ia menikahinya dengan syarat tak boleh sebut asal-usulnya.",
+          "🤰 Mereka dikaruniai anak. Suatu hari sang suami marah dan melanggar janji. “Dasar anak ikan!” umpatnya.",
+          "🌊 Sang istari menangis, dan bumi pun tenggelam membentuk danau luas. Pulau di tengahnya dipercaya sebagai anak mereka."
+        ]
+      }
+    ];
+
+    // elemen DOM
+    const rakContainer = document.getElementById('rakBukuContainer');
+    const jumlahSpan = document.getElementById('jumlahBuku');
+    const judulInput = document.getElementById('judulBuku');
+    const kategoriSelect = document.getElementById('kategoriBuku');
+    const gambarInput = document.getElementById('gambarBuku');
+    const tombolUpload = document.getElementById('tombolUpload');
+
+    // panel baca
+    const readerPanel = document.getElementById('readerPanel');
+    const overlay = document.getElementById('overlay');
+    const mobilePreviewGambar = document.getElementById('mobilePreviewGambar');
+    const judulBukuAktif = document.getElementById('judulBukuAktif');
+    const teksHalaman = document.getElementById('teksHalaman');
+    const pageIndicator = document.getElementById('pageIndicator');
+    const prevBtn = document.getElementById('prevPageBtn');
+    const nextBtn = document.getElementById('nextPageBtn');
+    const mobileBookCard = document.getElementById('mobileBookCard');
+
+    // kustomisasi
+    const mobileBg = document.getElementById('mobileBgColor');
+    const mobileText = document.getElementById('mobileTextColor');
+    const mobileFont = document.getElementById('mobileFontSize');
+    const mobileBorder = document.getElementById('mobileBorderStyle');
+
+    // state
+    let aktifId = koleksiBuku[0].id;
+    let halamanSekarang = 0; // indeks halaman
+    let totalHalaman = 3; // akan diupdate
+
+    // helper
+    function buatId() { return Date.now() + '-' + Math.random().toString(36).substring(2); }
+
+    // render rak
+    function renderRak() {
+      let html = '';
+      koleksiBuku.forEach(b => {
+        html += `
+          <div data-id="${b.id}" class="book-card bg-white/90 backdrop-blur-sm rounded-xl border border-amber-200 overflow-hidden shadow-sm cursor-pointer flex flex-col h-full active:scale-[0.98] transition">
+            <div class="cover-img" style="background-image: url('${b.gambar}'); background-size: cover; background-position: center;"></div>
+            <div class="p-2 flex flex-col flex-1">
+              <h4 class="font-bold text-xs line-clamp-2 min-h-[2rem]">${b.judul}</h4>
+              <span class="text-[9px] bg-amber-100 self-start px-2 py-0.5 rounded-full mt-1">${b.kategori}</span>
+              <div class="flex justify-between items-center mt-1">
+                <span class="text-[8px] text-stone-400"><i class="far fa-eye"></i> 12+</span>
+                <button class="hapus-btn text-stone-400 hover:text-red-600 transition text-xs" data-id="${b.id}" onclick="event.stopPropagation()"><i class="far fa-trash-alt"></i></button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      rakContainer.innerHTML = html;
+      jumlahSpan.innerText = koleksiBuku.length;
+
+      // event klik card
+      document.querySelectorAll('[data-id]').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.hapus-btn')) return;
+          const id = card.dataset.id;
+          bukaBukuDiPanel(id);
+        });
+      });
+
+      // event hapus
+      document.querySelectorAll('.hapus-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          if (koleksiBuku.length <= 1) {
+            alert('Minimal 1 buku harus ada. Upload dulu yuk!');
+            return;
+          }
+          koleksiBuku = koleksiBuku.filter(b => b.id !== id);
+          renderRak();
+          if (aktifId === id && koleksiBuku.length) {
+            bukaBukuDiPanel(koleksiBuku[0].id);
+          } else if (koleksiBuku.length > 0) {
+            bukaBukuDiPanel(koleksiBuku[0].id);
+          }
+        });
+      });
+    }
+
+    // buka buku di panel
+    function bukaBukuDiPanel(id) {
+      const buku = koleksiBuku.find(b => b.id === id);
+      if (!buku) return;
+      aktifId = id;
+      halamanSekarang = 0; // reset ke halaman 1
+
+      // update tampilan
+      mobilePreviewGambar.style.backgroundImage = `url('${buku.gambar}')`;
+      judulBukuAktif.innerText = buku.judul;
+      
+      // set total halaman
+      totalHalaman = buku.halaman.length;
+      
+      // tampilkan halaman 0
+      tampilkanHalaman(buku);
+
+      // buka panel
+      readerPanel.classList.add('show');
+      overlay.classList.add('show');
+    }
+
+    // tampilkan halaman sesuai indeks
+    function tampilkanHalaman(buku) {
+      if (!buku) return;
+      teksHalaman.innerText = buku.halaman[halamanSekarang];
+      pageIndicator.innerText = `Hlm ${halamanSekarang + 1} / ${totalHalaman}`;
+      
+      // atur tombol prev/next
+      prevBtn.disabled = (halamanSekarang === 0);
+      nextBtn.disabled = (halamanSekarang === totalHalaman - 1);
+    }
+
+    // navigasi
+    function nextPage() {
+      const buku = koleksiBuku.find(b => b.id === aktifId);
+      if (!buku) return;
+      if (halamanSekarang < totalHalaman - 1) {
+        halamanSekarang++;
+        tampilkanHalaman(buku);
+      }
+    }
+
+    function prevPage() {
+      const buku = koleksiBuku.find(b => b.id === aktifId);
+      if (!buku) return;
+      if (halamanSekarang > 0) {
+        halamanSekarang--;
+        tampilkanHalaman(buku);
+      }
+    }
+
+    // pasang event listener navigasi
+    prevBtn.addEventListener('click', prevPage);
+    nextBtn.addEventListener('click', nextPage);
+
+    // tutup panel
+    window.closeReader = function() {
+      readerPanel.classList.remove('show');
+      overlay.classList.remove('show');
+    };
+
+    // upload buku baru (dengan halaman default)
+    function uploadBuku() {
+      let judul = judulInput.value.trim() || 'Buku baru';
+      let kategori = kategoriSelect.value;
+      let file = gambarInput.files[0];
+
+      // buat halaman default berdasarkan kategori
+      let defaultHalaman = [];
+      if (kategori === 'Fiksi') {
+        defaultHalaman = [
+          "Bab 1: Di suatu kerajaan lautan...",
+          "Bab 2: Sang putri duyung bertemu nelayan tampan.",
+          "Bab 3: Mereka menghadapi badai bersama."
+        ];
+      } else if (kategori === 'Sejarah') {
+        defaultHalaman = [
+          "Bagian 1: Asal usul kerajaan.",
+          "Bagian 2: Masa kejayaan dan perdagangan.",
+          "Bagian 3: Peninggalan yang tersisa."
+        ];
+      } else if (kategori === 'Sains') {
+        defaultHalaman = [
+          "Percobaan 1: Alat dan bahan.",
+          "Percobaan 2: Langkah-langkah.",
+          "Kesimpulan: Hasil yang menarik."
+        ];
+      } else {
+        defaultHalaman = [
+          "Modul 1: Pengantar",
+          "Modul 2: Latihan soal",
+          "Modul 3: Evaluasi"
+        ];
+      }
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          let gambarData = e.target.result;
+          koleksiBuku.push({
+            id: buatId(),
+            judul: judul,
+            kategori: kategori,
+            gambar: gambarData,
+            halaman: defaultHalaman
+          });
+          renderRak();
+          bukaBukuDiPanel(koleksiBuku[koleksiBuku.length-1].id);
+          gambarInput.value = '';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // fallback gambar
+        let fallbackImg = '';
+        if (kategori === 'Fiksi') fallbackImg = 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&h=300&fit=crop&auto=format';
+        else if (kategori === 'Sejarah') fallbackImg = 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?w=400&h=300&fit=crop&auto=format';
+        else if (kategori === 'Sains') fallbackImg = 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=400&h=300&fit=crop&auto=format';
+        else fallbackImg = 'https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&h=300&fit=crop&auto=format';
+        
+        koleksiBuku.push({
+          id: buatId(),
+          judul: judul,
+          kategori: kategori,
+          gambar: fallbackImg,
+          halaman: defaultHalaman
+        });
+        renderRak();
+        bukaBukuDiPanel(koleksiBuku[koleksiBuku.length-1].id);
+      }
+    }
+
+    tombolUpload.addEventListener('click', (e) => {
+      e.preventDefault();
+      uploadBuku();
+    });
+
+    // kustomisasi
+    function applyMobileCustom() {
+      mobileBookCard.style.backgroundColor = mobileBg.value;
+      mobileBookCard.style.color = mobileText.value;
+      mobileBookCard.style.fontSize = mobileFont.value + 'px';
+      mobileBookCard.style.border = mobileBorder.value;
+    }
+    mobileBg.addEventListener('input', applyMobileCustom);
+    mobileText.addEventListener('input', applyMobileCustom);
+    mobileFont.addEventListener('input', applyMobileCustom);
+    mobileBorder.addEventListener('change', applyMobileCustom);
+
+    // inisialisasi
+    renderRak();
+    
+    // preview awal di panel (tanpa membuka)
+    (function initPreview() {
+      let buku = koleksiBuku[0];
+      mobilePreviewGambar.style.backgroundImage = `url('${buku.gambar}')`;
+      judulBukuAktif.innerText = buku.judul;
+      teksHalaman.innerText = "Tekan buku untuk mulai membaca...";
+      pageIndicator.innerText = "Hlm 0 / 0";
+      prevBtn.disabled = true;
+      nextBtn.disabled = true;
+    })();
+
+    overlay.addEventListener('click', closeReader);
+
+    // nama file di label
+    gambarInput.addEventListener('change', function() {
+      let label = this.closest('label');
+      if (this.files.length) {
+        let name = this.files[0].name;
+        label.innerHTML = `<i class="fas fa-image"></i> ${name.length > 10 ? name.substr(0,8)+'..' : name}`;
+      } else {
+        label.innerHTML = `<i class="fas fa-image"></i> File`;
+      }
+    });
+
+    // cegah scroll belakang saat panel terbuka
+    window.addEventListener('touchmove', (e) => {
+      if (readerPanel.classList.contains('show') && !e.target.closest('#readerPanel')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+  })();
+</script>
+</body>
+</html>
